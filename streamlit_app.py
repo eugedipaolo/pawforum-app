@@ -221,38 +221,55 @@ def message_bubble(msg: Dict[str, Any], nickname: str):
             st.caption("(Image not available)")
     st.markdown("</div>", unsafe_allow_html=True)
 
+def handle_send(active_channel: str, nickname: str):
+    text_val = (st.session_state.get("msg_input") or "").strip()
+    uploaded = st.session_state.get("msg_upload", None)
+
+    image_path = None
+    if uploaded is not None:
+        safe_name = f"{int(time.time())}_{uploaded.name.replace(' ', '_')}"
+        out_path = UPLOAD_DIR / safe_name
+        with open(out_path, "wb") as f:
+            f.write(uploaded.getbuffer())
+        image_path = str(out_path)
+
+    if not text_val and not image_path:
+        st.warning("Write a message or attach an image.")
+        return
+
+    add_message(active_channel, nickname or "anon", text_val, image_path)
+
+    # Limpia widgets DESDE el callback
+    st.session_state["msg_input"] = ""
+    st.session_state["uploader_key"] = st.session_state.get("uploader_key", 0) + 1
+    
 
 def composer_ui(active_channel: str, nickname: str):
     st.divider()
-    col1, col2 = st.columns([4,1])
+    col1, col2 = st.columns([4, 1])
 
     with col1:
-        text = st.text_input(f"Message #{active_channel}", key="msg_input", placeholder="Type your message…")
-        uploaded = st.file_uploader(
+        st.text_input(
+            f"Message #{active_channel}",
+            key="msg_input",
+            placeholder="Type your message…",
+        )
+        upload_key = f"msg_upload_{st.session_state['uploader_key']}"
+        st.file_uploader(
             "Attach an image (optional)",
-            type=["png","jpg","jpeg","gif"],
+            type=["png", "jpg", "jpeg", "gif"],
             accept_multiple_files=False,
+            key=upload_key,
         )
     with col2:
         st.write("")
         st.write("")
-        send = st.button("Send", use_container_width=True)
-
-    if send:
-        image_path = None
-        if uploaded is not None:
-            safe_name = f"{int(time.time())}_{uploaded.name.replace(' ', '_')}"
-            out_path = UPLOAD_DIR / safe_name
-            with open(out_path, "wb") as f:
-                f.write(uploaded.getbuffer())
-            image_path = str(out_path)
-        text_val = (text or "").strip()
-        if not text_val and not image_path:
-            st.warning("Write a message or attach an image.")
-        else:
-            add_message(active_channel, nickname or "anon", text_val, image_path)
-            st.session_state.msg_input = ""
-            st.rerun()
+        st.button(
+            "Send",
+            use_container_width=True,
+            on_click=handle_send,
+            args=(active_channel, nickname),
+        )
 
 
 # --------------------------
@@ -260,6 +277,9 @@ def composer_ui(active_channel: str, nickname: str):
 # --------------------------
 
 def main():
+    if "uploader_key" not in st.session_state:
+        st.session_state["uploader_key"] = 0
+
     st.set_page_config(page_title="PawForum", page_icon="💬", layout="wide")
     init_db()
 
