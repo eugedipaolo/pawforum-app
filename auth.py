@@ -19,11 +19,23 @@ def current_user() -> str | None:
 
 # -------- Google OAuth --------
 
+import os
+
 def _get_google_conf():
-    cfg = st.secrets.get("google_oauth", {})
-    cid = cfg.get("client_id")
-    csec = cfg.get("client_secret")
-    redirect_uri = cfg.get("redirect_uri")
+    # 1) Try Streamlit secrets
+    try:
+        cfg = st.secrets["google_oauth"]
+        cid = cfg.get("client_id")
+        csec = cfg.get("client_secret")
+        redirect_uri = cfg.get("redirect_uri")
+    except Exception:
+        cid = csec = redirect_uri = None
+
+    # 2) Fallback a variables de entorno
+    cid = cid or os.getenv("GOOGLE_CLIENT_ID")
+    csec = csec or os.getenv("GOOGLE_CLIENT_SECRET")
+    redirect_uri = redirect_uri or os.getenv("GOOGLE_REDIRECT_URI")
+
     if not cid or not csec or not redirect_uri:
         return None
     return cid, csec, redirect_uri

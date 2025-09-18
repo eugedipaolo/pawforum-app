@@ -1,5 +1,6 @@
 import html
 import time
+import hashlib
 from pathlib import Path
 from typing import Dict, Any, Optional
 import streamlit as st
@@ -20,10 +21,29 @@ PALETTE = {
     "Text strong": "#ffffff",
 }
 
-def _ensure_defaults():
-    # evita KeyError en la primera carga
-    st.session_state.setdefault("uploader_key", 0)
-    st.session_state.setdefault("msg_input", "")
+
+
+# paleta de colores para usuarios (rotará por hash)
+USER_COLORS = [
+    "#3b82f6",  # blue
+    "#10b981",  # emerald
+    "#f59e0b",  # amber
+    "#ef4444",  # red
+    "#a855f7",  # purple
+    "#14b8a6",  # teal
+    "#eab308",  # yellow
+    "#f97316",  # orange
+    "#22c55e",  # green
+    "#8b5cf6",  # violet
+]
+
+
+def user_color(username: Optional[str]) -> str:
+    if not username:
+        return USER_COLORS[0]
+    h = int(hashlib.sha256(username.encode("utf-8")).hexdigest(), 16)
+    return USER_COLORS[h % len(USER_COLORS)]
+
 
 def inject_styles():
     st.markdown(f"""
@@ -38,15 +58,24 @@ def inject_styles():
       }}
       html, body, [data-testid="stAppViewContainer"] {{ background: var(--bg); color: var(--text); }}
       [data-testid="stSidebar"] {{ background: var(--panel); }}
-      .bubble {{
-        background: var(--panel);
-        border: 1px solid rgba(255,255,255,0.08);
-        border-radius: 12px;
-        padding: 10px 12px;
-        margin-bottom: 8px;
+
+      /* Lista de mensajes con línea separadora */
+      .msg-row {{
+        padding: 10px 0 12px 0;
+        border-top: 1px solid rgba(255,255,255,0.08);
       }}
-      .bubble.self {{ border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }}
-      .timestamp {{ color: #9ca3af; font-size: 12px; }}
+      .msg-head {{
+        display: flex; align-items: baseline; gap: 8px;
+        font-size: 14px; line-height: 1.2;
+      }}
+      .msg-dot {{
+        width: 10px; height: 10px; border-radius: 999px; flex: 0 0 10px;
+        box-shadow: 0 0 0 2px rgba(255,255,255,0.06) inset;
+      }}
+      .msg-username {{ font-weight: 700; }}
+      .msg-time {{ color: #9ca3af; font-size: 12px; }}
+      .msg-text {{ margin-top: 4px; font-size: 14px; color: var(--text); }}
+
       .stButton>button {{ background: var(--accent2); color: #fff; border: 0; border-radius: 10px; padding: 8px 14px; }}
       input[type="text"], textarea, .stTextInput>div>div>input {{
         background: var(--panel) !important; color: var(--text) !important; border: 1px solid rgba(255,255,255,0.12);
@@ -57,6 +86,8 @@ def inject_styles():
       }}
     </style>
     """, unsafe_allow_html=True)
+
+
 
 
 def render_palette():
@@ -167,8 +198,46 @@ def _handle_send(active_channel: str, username: Optional[str], upload_key: str):
 
     st.session_state["msg_input"] = ""
     st.session_state["uploader_key"] += 1
-    st.rerun()
+    #st.rerun()
 
+def message_row(msg: Dict[str, Any], username: Optional[str]):
+    from datetime import datetime
+    ts = datetime.fromtimestamp(msg["ts"]).strftime("%H:%M") if msg.get("ts") else ""
+    u = msg.get("user") or "anon"
+    col = user_color(u)
+
+    # encabezado con punto de color + username coloreado + hora
+    st.markdown(
+        f"""
+        <div class="msg-row">
+          <div class="msg-head">
+            <span class="msg-dot" style="background:{col}"></span>
+            <span class="msg-username" style="color:{col}">{html.escape(u)}</span>
+            <span class="msg-time">· {ts}</span>
+          </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if msg.get("text"):
+        st.markdown(
+            f"<div class=\"msg-text\">{html.escape(msg['text'])}</div>",
+            unsafe_allow_html=True,
+        )
+    if msg.get("image_path"):
+        try:
+            Image.open(msg["image_path"])  # verify
+            st.image(msg["image_path"], use_column_width=True)
+        except Exception:
+            st.caption("(Image not available)")
+
+    # cierra el contenedor de fila
+    st.markdown("</div>", unsafe_allow_html=True)
+
+def _ensure_defaults():
+    # evita KeyError en la primera carga
+    st.session_state.setdefault("uploader_key", 0)
+    st.session_state.setdefault("msg_input", "")
 
 def render_chat(active_channel: str, username: Optional[str]):
     _ensure_defaults()
@@ -176,8 +245,13 @@ def render_chat(active_channel: str, username: Optional[str]):
 
     with placeholder.container():
         msgs = list_messages(active_channel)
+        first = True
         for m in msgs:
-            message_bubble(m, username)
+            # añadimos una línea separadora automática por CSS (border-top)
+            # el primer elemento no necesita margen extra
+            message_row(m, username)
+
+
 
 
 def composer_ui(active_channel: str, username: Optional[str]):

@@ -7,6 +7,8 @@ APP_TITLE = "PawForum"
 
 
 def main():
+    import sys, streamlit as st
+    st.caption(f"Build: streamlit_app.py → app.main | Python {sys.version.split()[0]}")
     st.set_page_config(page_title=APP_TITLE, page_icon="💬", layout="wide")
     init_db()
 
